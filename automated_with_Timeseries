@@ -1,0 +1,479 @@
+% Written by Catherine Marina Breen & William Ryan Currier
+% cbreen@uw.edu 
+
+% Purpose: Load in images of an ORANGE/RED snow depth pole and find the number
+% of pixels between the top and bottom. Then, convert the number of pixels
+% to length by using a cm/pixel ratio. 
+
+% The cm/pixel is calibrated at the
+% beginning of the code. By finding the length of the top of the pole in
+% pixels. Since the top of the pole is 10cm in length, 10cm divided by this
+% length is the cm/pixel ratio. 
+
+% To find the line in the image, the code relies on the Hough Transform.
+% The Hough Transform section of the code was written by William Ryan
+% Currier. 
+
+% To use this code, the user simply needs to update the paths for what they
+% would like to save their csv's. The code walks the user through find the
+% pathways to identify the folder of images. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% clear workspace and begin code. 
+
+clear all; close all; clc
+
+fontSize=12;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 1) Load images and necessary metadata
+
+% 1A) file path for the images 
+file_path = uigetdir;
+
+% 1B) file path for the CSV destination
+save_path = uigetdir;
+
+% 1B) CSV name for snow depths
+automatedCSV = '/SnowDepthTimeseries.csv';
+%automatedCSV = '/timeseries_W1B_automated.csv';
+% minCSV = '/timeseries_W1B_minValue.csv';
+
+addpath(file_path)
+listing = dir([file_path,'/*.JPG']);
+
+filter = [.2 .3 0; .6 .7 1];%[0.1 0.1 0.1; 0.6 0.8 0.6]; %%%%%%%%optional
+
+pole_length = 150; % centimeters
+top_of_pole_length = 10;
+              
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% 2) Calibrate to the top of the stake. Once it finds the line,
+%%% make sure to press the space bar to continue.
+
+originalImage = imread(listing(1).name); % read in Calibration Image
+% RotatedImage = imrotate(originalImage,90); % Rotate Image so that you can make it larger on your screen
+
+imshow(originalImage); % show image
+title('Crop the top of the stake');
+[X,Y]         = ginput(4); % crop the image by clicking around the yellow top of the pole
+
+topOfStake = (originalImage(min(Y):max(Y),min(X):max(X),:)); % Clip the Image based on `ginput.m`
+topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
+imshow(topOfStake);
+title('Select 6 pixels at top of stake'); % Place title here
+[x,y] = ginput (6);
+
+redTop   = zeros([1 5]); 
+greenTop   = zeros([1 5]); 
+blueTop = zeros([1 5]); 
+
+ for i = 1:5
+ redTop(i) = topOfStake(int16(y(i)), int16(x(i)), 1);
+ greenTop(i) = topOfStake(int16(y(i)), int16(x(i)), 2);
+ blueTop(i) = topOfStake(int16(y(i)), int16(x(i)), 3);
+end
+
+% Break RGB image into seperate RGB matrices
+redBandTop = topOfStake(:, :, 1);
+greenBandTop = topOfStake(:, :, 2);
+blueBandTop = topOfStake(:, :, 3);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+redThresholdLowTop = min(redTop);
+redThresholdHighTop = max(redTop);
+greenThresholdLowTop = min(greenTop);
+greenThresholdHighTop = max(greenTop);
+blueThresholdLowTop = min(blueTop);
+blueThresholdHighTop = max(blueTop);
+
+%%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+redMaskTop = (redBandTop >= redThresholdLowTop) & (redBandTop <= redThresholdHighTop);
+greenMaskTop = (greenBandTop >= greenThresholdLowTop) & (greenBandTop <= greenThresholdHighTop);
+blueMaskTop = (blueBandTop >= blueThresholdLowTop) & (blueBandTop <= blueThresholdHighTop);
+
+topOftheStakeMask = uint8(redMaskTop & greenMaskTop & blueMaskTop);
+
+%%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
+figure
+set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
+subplot(1,4,1); %% this throws it off
+imshow(topOftheStakeMask, []);
+caption = sprintf('Mask of Only\nThe Yellow Objects');
+title(caption, 'FontSize', fontSize);
+
+% We're going to filter out small objects.
+smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.
+topOftheStakeMask = uint8(bwareaopen(topOftheStakeMask, smallestAcceptableArea));
+subplot(1,4,2)
+imshow(topOftheStakeMask, []);
+fontSize = 13;
+caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
+title(caption, 'FontSize', fontSize);
+
+% Smooth the border using a morphological closing operation, imclose().
+structuringElement = strel('disk', 4);
+topOftheStakeMask = imclose(topOftheStakeMask, structuringElement);
+subplot(1,4,3)
+imshow(topOftheStakeMask, []);
+fontSize = 16;
+title('Border smoothed', 'FontSize', fontSize);
+
+% Fill in any holes in the regions, since they are most likely red also.
+topOftheStakeMask = uint8(imfill(topOftheStakeMask, 'holes'));
+subplot(1,4,4)
+imshow(topOftheStakeMask, []);
+title('Regions Filled', 'FontSize', fontSize);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Hough Lines Code is the Algorithm that Detects the Longest Line
+[H,T,R] = hough(topOftheStakeMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
+P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix
+lines = houghlines(topOftheStakeMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+figure
+set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
+subplot(1,2,1)
+imshow(topOfStake), hold on
+title(sprintf('%s\n%s','All Lines','Detected From Hough Transform')) %UPDATE
+
+max_len = 0; % initialize
+
+% Visualize X number of lines from the houghline output
+for k = 1:length(lines)
+    xy = [lines(k).point1; lines(k).point2];
+    plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
+    %
+    %                    % Plot beginnings and ends of lines
+    plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
+    plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+    
+    % Determine the endpoints, and length in pixels of the longest line segment
+    len = norm(lines(k).point1 - lines(k).point2);
+    if ( len > max_len)
+        max_len = len; % length in pixels
+        xy_long = xy;  % coordinates
+        % xy_long
+        %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
+        %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
+        
+    end
+end
+
+% Plot the longest line segment to see how well the algorithm worked for each image
+subplot(1,2,2),imshow(topOfStake)
+title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
+hold on
+plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
+plot(xy_long(1,1),xy_long(1,2),'ro');
+plot(xy_long(2,1),xy_long(2,2),'bo');
+
+% number of pixels that make up the top
+PixelCount = max_len;
+LengthPerPixel = top_of_pole_length/PixelCount; %cm/pixel
+
+pause();
+
+close all; clc 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%                      
+%%% 3) select threshold of the whole stake. Once it finds the final line,
+%%% make sure to press the space bar to continue.
+
+% take two photos from early, mid, and late season
+% store the values 
+
+% read in 3 threshold images
+firstImage = listing(1);
+secondImage = ceil(length(listing)/2);
+lastImage = length(listing);
+thresholdImages = {imread(firstImage.name), imread(listing(secondImage).name), imread(listing(lastImage).name)};
+numThresholdImages = length(thresholdImages);
+pixels = 10; %% how many pixels you want to use to calibrate
+
+redThreshold   = zeros([1 (pixels*numThresholdImages)]); 
+greenThreshold   = zeros([1 (pixels*numThresholdImages)]); 
+blueThreshold = zeros([1 (pixels*numThresholdImages)]); 
+count = 0;
+for g = 1:length(thresholdImages)
+thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
+imshow(thresholdImages{g}); % show image
+title('Crop the entire stake to select threshold values');
+[U,V]         = ginput(4); % crop the image by clicking around the yellow top of the pole
+thresholdImages{g} = (thresholdImages{g}(min(V):max(V),min(U):max(U),:)); % Clip the Image based on `ginput.m`
+
+imshow(thresholdImages{g});
+title('Select 10 pixels of the entire stake (including top)');
+[x,y] = ginput(pixels);
+%%% select 5 points from each image, and then 
+ for i = 1:pixels
+ redThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
+ greenThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
+ blueThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
+
+ end
+% close image and start over  
+count = count + pixels; 
+close all;  
+ 
+end
+
+close all;
+                    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+redThresholdLow = min(redThreshold);
+redThresholdHigh = max(redThreshold);
+greenThresholdLow = min(greenThreshold);
+greenThresholdHigh = max(greenThreshold);
+blueThresholdLow = min(blueThreshold);
+blueThresholdHigh = max(blueThreshold);
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%% 4) Run the code on ALL Images. You will have to crop the ENTIRE stake
+%%%%% again. This reduces background noise pixels. 
+
+count=0; %% don't want the test photo
+
+PixelLengths   = zeros([1 size(listing,1)]); 
+SnowDepth = zeros([1 size(listing,1)]); % in centimeters
+
+for i=1:size(listing,1) % started when there was snow and no tree in canopy
+    % testing -- starting at two instead
+    count=count+1;
+	%%%%%%%%%%%%%%%%%%%% Read in image into an array. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    [rgbImage] = imread(listing(i).name);
+    rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
+    % imshow(listing(1).name) %testing
+    % impixelinfo() %testing
+    imshow(rgbImage)
+    title('Crop the entire of the stake');
+    
+    if count==1
+        [X,Y]         = ginput(4); % select where to crop for all future images
+    end
+   
+    rgbImage = (rgbImage(min(Y):max(Y),min(X):max(X),:));
+    
+    % Break RGB image into seperate RGB matrices
+	redBand = rgbImage(:, :, 1); 
+	greenBand = rgbImage(:, :, 2); 
+	blueBand = rgbImage(:, :, 3); 
+  
+    %%%%%%%%%%%%%%%%% Compute and Plot Histograms for Band in the Image %%%%%%%%%%%%%
+    
+    % NOTE: that this whole section can be commented out if you don't want to see the
+    % histograms to build a better threshold
+    
+%     % Compute and plot the red histogram. 
+%     figure
+%     set(gcf,'Position',[23         531        1658         302])
+%   	hR = subplot(1, 4, 2); 
+% 	[countsR, grayLevelsR] = imhist(redBand); 
+% 	maxGLValueR = find(countsR > 0, 1, 'last'); 
+% 	maxCountR = max(countsR); 
+% 	bar(countsR, 'r'); 
+% 	grid on; 
+% 	xlabel('Gray Levels'); 
+% 	ylabel('Pixel Count'); 
+% 	title('Histogram of Red Band', 'FontSize', fontSize);
+% 
+% 	% Compute and plot the green histogram. 
+% 	hG = subplot(1, 4, 3); 
+% 	[countsG, grayLevelsG] = imhist(greenBand); 
+% 	maxGLValueG = find(countsG > 0, 1, 'last'); 
+% 	maxCountG = max(countsG); 
+% 	bar(countsG, 'g', 'BarWidth', 0.95); 
+% 	grid on; 
+% 	xlabel('Gray Levels'); 
+% 	ylabel('Pixel Count'); 
+% 	title('Histogram of Green Band', 'FontSize', fontSize);
+% 
+% 	% Compute and plot the blue histogram. 
+% 	hB = subplot(1, 4, 4); 
+% 	[countsB, grayLevelsB] = imhist(blueBand); 
+% 	maxGLValueB = find(countsB > 0, 1, 'last'); 
+% 	maxCountB = max(countsB); 
+% 	bar(countsB, 'b'); 
+% 	grid on; 
+% 	xlabel('Gray Levels'); 
+% 	ylabel('Pixel Count'); 
+% 	title('Histogram of Blue Band', 'FontSize', fontSize);
+%     
+% 	% Set all axes to be the same width and height.
+% 	% This makes it easier to compare them.
+% 	maxGL = 255; 
+% 	maxCount = max([maxCountR,  maxCountG, maxCountB]); 
+% 	axis([hR hG hB], [0 maxGL 0 maxCount]); 
+% 
+% 	% Plot all 3 histograms in one plot.
+% 	subplot(1, 4, 1); 
+% 	plot(grayLevelsR, countsR, 'r', 'LineWidth', 2); 
+% 	grid on; 
+% 	xlabel('Gray Levels'); 
+% 	ylabel('Pixel Count'); 
+% 	hold on; 
+% 	plot(grayLevelsG, countsG, 'g', 'LineWidth', 2); 
+% 	plot(grayLevelsB, countsB, 'b', 'LineWidth', 2); 
+% 	title('Histogram of All Bands', 'FontSize', fontSize);     
+% 	maxGrayLevel = max([maxGLValueR, maxGLValueG, maxGLValueB]);     
+      
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+            
+%              redThresholdLow = uint8(redThresholdLow * 255);
+%              greenThresholdHigh = uint8(greenThresholdHigh * 255);
+%              blueThresholdHigh = uint8(blueThresholdHigh * 255);
+
+    %%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+        redMask = (redBand >= redThresholdLow) & (redBand <= redThresholdHigh);
+        greenMask = (greenBand >= greenThresholdLow) & (greenBand <= greenThresholdHigh);
+        blueMask = (blueBand >= blueThresholdLow) & (blueBand <= blueThresholdHigh);
+
+        redObjectsMask = uint8(redMask & greenMask & blueMask);
+    
+    %%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
+            figure
+            set(gcf,'Position',[23         531        1658         302]) %katie update 
+            subplot(1,4,1)
+            imshow(redObjectsMask, []);
+            caption = sprintf('Mask of Only\nThe Red Objects');
+            title(caption, 'FontSize', fontSize);    
+
+            % We're going to filter out small objects.
+            smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.    
+            redObjectsMask = uint8(bwareaopen(redObjectsMask, smallestAcceptableArea));
+            subplot(1,4,2)
+            imshow(redObjectsMask, []);
+            fontSize = 13;
+            caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
+            title(caption, 'FontSize', fontSize);
+
+            % Smooth the border using a morphological closing operation, imclose().
+            structuringElement = strel('disk', 4);
+            redObjectsMask = imclose(redObjectsMask, structuringElement);
+            subplot(1,4,3)
+            imshow(redObjectsMask, []);
+            fontSize = 16;
+            title('Border smoothed', 'FontSize', fontSize);
+
+
+            % Fill in any holes in the regions, since they are most likely red also.
+            redObjectsMask = uint8(imfill(redObjectsMask, 'holes'));
+            subplot(1,4,4)
+            imshow(redObjectsMask, []);
+            title('Regions Filled', 'FontSize', fontSize);
+    
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                % Hough Lines Code is the Algorithm that Detects the Longest Line
+                [H,T,R] = hough(redObjectsMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
+                P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix 
+                lines = houghlines(redObjectsMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
+                
+    %%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+                figure,
+                set(gcf,'Position',[23         531        1658         302]) %katie update
+                subplot(1,2,1)
+                imshow(rgbImage), hold on
+                title(sprintf('%s\n%s','All Lines','Detected From Hough Transform'))
+                
+                max_len = 0; % initialize
+                % Visualize X number of lines from the houghline output
+                for k = 1:length(lines)
+                   xy = [lines(k).point1; lines(k).point2];
+                   plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
+% 
+%                    % Plot beginnings and ends of lines
+                   plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
+                   plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+                   
+                   % Determine the endpoints, and length in pixels of the longest line segment
+                   len = norm(lines(k).point1 - lines(k).point2);
+                   if ( len > max_len)
+                      max_len = len; % length in pixels
+                      xy_long = xy;  % coordinates 
+                      % xy_long
+                      %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
+                      %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
+
+                   end
+                end
+
+                % Plot the longest line segment to see how well the algorithm worked for each image
+                    subplot(1,2,2),imshow(rgbImage)
+                    title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
+                    hold on
+                    plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
+                    plot(xy_long(1,1),xy_long(1,2),'ro');
+                    plot(xy_long(2,1),xy_long(2,2),'bo');
+
+                % Katie addition, lines 200 - 215
+                % calculate depth from max_len from snow-free & snow image
+                % store SnowDepth into a matrix, indexed by image number
+                    
+                    PixelLengths(i) = max_len;
+                    %%take a snow free image where it gets the whole stake
+                    %%
+                    SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
+                    SnowPixels = max_len ;      
+                    SnowDepth(i) = (SnowFreePixels - SnowPixels) * LengthPerPixel;
+                    %print(SnowDepth(i)) %testing
+                   
+                    %pause()  %%%%%%%%%%THIS IS THE PAUSE FOR IMMEDIATE VIEWING  
+    
+    close all; clc
+
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% 5) View plot of Snow Depth vs. Time
+
+% convert date into datetime format
+% make sure it's the right date (metadata from the photos)
+ for z=1:size(listing,1)
+     f = fullfile(listing(z).folder,(listing(z).name));   
+     d = imfinfo(f).DateTime();
+     creation = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
+     creationDateTime(z) = creation;
+ end
+
+%%% all values
+plot(creationDateTime,SnowDepth);
+set(gcf,'Position',[23         531        1658         302]);
+legend('Raw');%,'SNOTEL');
+ylabel('Snow Depth');
+title('Snow Depth (cm) from Snow Stakes');
+
+%%% take the minimum value of each day 
+timeseries = timetable(creationDateTime(:),SnowDepth(:));
+writetimetable(timeseries,strcat(save_path, automatedCSV));
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%save thresholds
+
+%%%%%%%%%%%%%%%%%%%%%%% end of code %%%%%%%%%%%%%%%%%%%%%
+
+
+ 
