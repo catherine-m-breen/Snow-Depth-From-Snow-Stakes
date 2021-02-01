@@ -42,7 +42,7 @@ automatedCSV = '/SnowDepthTimeseries.csv';
 addpath(file_path)
 listing = dir([file_path,'/*.JPG']);
 
-filter = [.2 .3 0; .6 .7 1];%[0.1 0.1 0.1; 0.6 0.8 0.6]; %%%%%%%%optional
+filter = [.2 .3 0; .6 .7 1];
 
 pole_length = 150; % centimeters
 top_of_pole_length = 10;
@@ -470,8 +470,6 @@ timeseries = timetable(creationDateTime(:),SnowDepth(:));
 writetimetable(timeseries,strcat(save_path, automatedCSV));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%save thresholds
 
 %%%%%%%%%%%%%%%%%%%%%%% end of code %%%%%%%%%%%%%%%%%%%%%
 
