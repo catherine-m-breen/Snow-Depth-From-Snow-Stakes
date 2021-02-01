@@ -4,6 +4,9 @@
 
 clear all; close all; clc
 
+% camera number
+cameraNumber = 'test' ; %%% FILL IN HERE
+
 %%%%%% metadata
 %%% Go to the directory with the images
 %file_path = 'C:\Users\cbreen\Documents\SnowEx2020_Cameras\E8A';
@@ -24,7 +27,15 @@ SnowDepth = zeros([1 size(listing,1)]); % in centimeters
 for i=1:size(listing,1) % started when there was snow and no tree in canopy
 
     img = imread(listing(i).name);
-   % img = imrotate(img, -2); %%% rotation setting
+    
+    %line that accounts for lens distortion
+    IntrinsicMatrix = [9406.3572 0 0; 0  9262.9601 0; 3163.8267 1750.1192 1];
+    radialDistortion = [0.4498 -1.9261];
+    cameraParams = cameraParameters('IntrinsicMatrix',IntrinsicMatrix,'RadialDistortion',radialDistortion);
+    img = undistortImage(img,cameraParams);
+    
+    %img = imrotate(img, -2); %%% rotation setting
+   
 
     %%%% get top and bottom of stake %%%%%
     imshow(img); % Displays the image
@@ -43,14 +54,14 @@ for i=1:size(listing,1) % started when there was snow and no tree in canopy
         %%%%%
     PixelLengths(i) = length(b); %PixelLengths(i) = length(b);
     SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
-    SnowPixels = length(b);      
+    SnowPixels = length(b);
     SnowDepth(i) = 304.8 - (SnowPixels * LengthPerPixel); %SnowDepth(i)
    
 end
 
 %%%%%%%%%%% extract date and time
  for z=1:size(listing,1)
-     f = fullfile(listing(z).folder,(listing(z).name));  
+     f = fullfile(listing(z).folder,(listing(z).name));
      d = imfinfo(f).DateTime();
      creation = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
      creationDateTime(z) = creation;
@@ -69,7 +80,8 @@ timeseriesRaw = timetable(creationDateTime(:),PixelLengths(:));
 
 %%% write two time tables 1) the snow depths
 %%% and 2) the pixel lengths (in case the calibration is wrong)
-writetimetable(timeseries,'timeseries_W3A_validation.csv')
-writetimetable(timeseriesRaw, 'timeseriesPixelLengths_W3A_validation.csv')
+
+writetimetable(timeseries,strcat('timeseries_',cameraNumber,'_validation.csv'));
+writetimetable(timeseriesRaw, strcat('timeseriesPixelLengths_',cameraNumber,'_validation.csv'))
 
 close all; clc
