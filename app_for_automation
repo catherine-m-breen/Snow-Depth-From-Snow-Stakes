@@ -1,0 +1,587 @@
+classdef test2 < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                    matlab.ui.Figure
+        SelectFolderofImagesButton  matlab.ui.control.Button
+        CSVFileNameLabel            matlab.ui.control.Label
+        CSVFileNameEditField        matlab.ui.control.EditField
+        RunButton                   matlab.ui.control.Button
+        AutomatedSnowDepthsfromSnowPolesLabel  matlab.ui.control.Label
+        ExportCSVButton             matlab.ui.control.Button
+        SelectCSVDestinationButton  matlab.ui.control.Button
+        Version11Label              matlab.ui.control.Label
+        NotePleaseincludecsvattheendofyourfilenameLabel  matlab.ui.control.Label
+        UIAxes                      matlab.ui.control.UIAxes
+    end
+
+    
+    properties (Access = private)
+        imageFolder % Description
+        CSVfilename % Description
+        CSVFolder % Description
+        SnowDepth % Description
+        creationDateTime % Description
+    end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: SelectFolderofImagesButton
+        function SelectFolderofImagesButtonPushed(app, event)
+            app.imageFolder = uigetdir;
+            disp(app.imageFolder);
+        end
+
+        % Value changed function: CSVFileNameEditField
+        function CSVFileNameEditFieldValueChanged(app, event)
+            app.CSVfilename = strcat('/',app.CSVFileNameEditField.Value);
+            disp(app.CSVfilename);
+        end
+
+        % Button pushed function: RunButton
+        function RunButtonPushed(app, event)
+           %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+           %%%%% Update this with a call to a function rather than a step
+           %%%%% through %%%%%%%%%%%%%%%%
+           addpath(app.imageFolder)
+
+           listing = dir([app.imageFolder,'/*.JPG']);
+
+           filter = [.2 .3 0; .6 .7 1];%[0.1 0.1 0.1; 0.6 0.8 0.6]; %%%%%%%%optional
+
+           pole_length = 150; % centimeters
+           top_of_pole_length = 10;
+              
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%% 2) Calibrate to the top of the stake. Once it finds the line,
+    %%% make sure to press the space bar to continue.
+    
+        originalImage = imread(listing(1).name); % read in Calibration Image
+    % RotatedImage = imrotate(originalImage,90); % Rotate Image so that you can make it larger on your screen
+    
+        imshow(originalImage); % show image
+        title('Crop the top of the stake');
+        [X,Y]         = ginput(4); % crop the image by clicking around the yellow top of the pole
+    
+        topOfStake = (originalImage(min(Y):max(Y),min(X):max(X),:)); % Clip the Image based on `ginput.m`
+        topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
+        imshow(topOfStake);
+        title('Select 6 pixels at top of stake'); % Place title here
+        [x,y] = ginput (6);
+    
+        redTop   = zeros([1 5]); 
+        greenTop   = zeros([1 5]); 
+        blueTop = zeros([1 5]); 
+    
+        for i = 1:5
+         redTop(i) = topOfStake(int16(y(i)), int16(x(i)), 1);
+         greenTop(i) = topOfStake(int16(y(i)), int16(x(i)), 2);
+         blueTop(i) = topOfStake(int16(y(i)), int16(x(i)), 3);
+        end
+    
+    % Break RGB image into seperate RGB matrices
+        redBandTop = topOfStake(:, :, 1);
+        greenBandTop = topOfStake(:, :, 2);
+        blueBandTop = topOfStake(:, :, 3);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+        redThresholdLowTop = min(redTop);
+        redThresholdHighTop = max(redTop);
+        greenThresholdLowTop = min(greenTop);
+        greenThresholdHighTop = max(greenTop);
+        blueThresholdLowTop = min(blueTop);
+        blueThresholdHighTop = max(blueTop);
+        
+        %%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        redMaskTop = (redBandTop >= redThresholdLowTop) & (redBandTop <= redThresholdHighTop);
+        greenMaskTop = (greenBandTop >= greenThresholdLowTop) & (greenBandTop <= greenThresholdHighTop);
+        blueMaskTop = (blueBandTop >= blueThresholdLowTop) & (blueBandTop <= blueThresholdHighTop);
+        
+        topOftheStakeMask = uint8(redMaskTop & greenMaskTop & blueMaskTop);
+    
+    %%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
+        figure
+        set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
+        subplot(1,4,1); %% this throws it off
+        imshow(topOftheStakeMask, []);
+        caption = sprintf('Mask of Only\nThe Yellow Objects');
+        title(caption, 'FontSize', fontSize);
+        
+        % We're going to filter out small objects.
+        smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.
+        topOftheStakeMask = uint8(bwareaopen(topOftheStakeMask, smallestAcceptableArea));
+        subplot(1,4,2)
+        imshow(topOftheStakeMask, []);
+        fontSize = 13;
+        caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
+        title(caption, 'FontSize', fontSize);
+        
+        % Smooth the border using a morphological closing operation, imclose().
+        structuringElement = strel('disk', 4);
+        topOftheStakeMask = imclose(topOftheStakeMask, structuringElement);
+        subplot(1,4,3)
+        imshow(topOftheStakeMask, []);
+        fontSize = 16;
+        title('Border smoothed', 'FontSize', fontSize);
+    
+        % Fill in any holes in the regions, since they are most likely red also.
+        topOftheStakeMask = uint8(imfill(topOftheStakeMask, 'holes'));
+        subplot(1,4,4)
+        imshow(topOftheStakeMask, []);
+        title('Regions Filled', 'FontSize', fontSize);
+    
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+        % Hough Lines Code is the Algorithm that Detects the Longest Line
+        [H,T,R] = hough(topOftheStakeMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
+        P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix
+        lines = houghlines(topOftheStakeMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+        figure
+        set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
+        subplot(1,2,1)
+        imshow(topOfStake), hold on
+        title(sprintf('%s\n%s','All Lines','Detected From Hough Transform')) %UPDATE
+        
+        max_len = 0; % initialize
+    
+        % Visualize X number of lines from the houghline output
+        for k = 1:length(lines)
+            xy = [lines(k).point1; lines(k).point2];
+            plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
+            %
+            %                    % Plot beginnings and ends of lines
+            plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
+            plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+            
+            % Determine the endpoints, and length in pixels of the longest line segment
+            len = norm(lines(k).point1 - lines(k).point2);
+            if ( len > max_len)
+                max_len = len; % length in pixels
+                xy_long = xy;  % coordinates
+                % xy_long
+                %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
+                %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
+                
+            end
+        end
+    
+        % Plot the longest line segment to see how well the algorithm worked for each image
+        subplot(1,2,2),imshow(topOfStake)
+        title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
+        hold on
+        plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
+        plot(xy_long(1,1),xy_long(1,2),'ro');
+        plot(xy_long(2,1),xy_long(2,2),'bo');
+        
+        % number of pixels that make up the top
+        PixelCount = max_len;
+        LengthPerPixel = top_of_pole_length/PixelCount; %cm/pixel
+        
+        pause();
+        
+        close all; clc 
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%                      
+    %%% 3) select threshold of the whole stake. Once it finds the final line,
+    %%% make sure to press the space bar to continue.
+    
+    % take two photos from early, mid, and late season
+    % store the values 
+    
+        % read in 3 threshold images
+        firstImage = listing(1);
+        secondImage = ceil(length(listing)/2);
+        lastImage = length(listing);
+        thresholdImages = {imread(firstImage.name), imread(listing(secondImage).name), imread(listing(lastImage).name)};
+        numThresholdImages = length(thresholdImages);
+        pixels = 10; %% how many pixels you want to use to calibrate
+        
+        redThresholdFall   = zeros([1 (pixels)]); 
+        greenThresholdFall   = zeros([1 (pixels)]); 
+        blueThresholdFall = zeros([1 (pixels)]);
+        
+        redThresholdWinter   = zeros([1 (pixels)]); 
+        greenThresholdWinter   = zeros([1 (pixels)]); 
+        blueThresholdWinter = zeros([1 (pixels)]);
+        
+        redThresholdSpring   = zeros([1 (pixels)]); 
+        greenThresholdSpring   = zeros([1 (pixels)]); 
+        blueThresholdSpring = zeros([1 (pixels)]);
+    
+        %%%%% initialize loop 
+        count = 0;
+        for g = 1:length(thresholdImages)
+        thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
+        imshow(thresholdImages{g}); % show image
+        title('Crop the entire stake to select threshold values');
+        [U,V]         = ginput(4); % crop the image by clicking around the yellow top of the pole
+        thresholdImages{g} = (thresholdImages{g}(min(V):max(V),min(U):max(U),:)); % Clip the Image based on `ginput.m`
+        
+        imshow(thresholdImages{g});
+        title('Select 10 pixels of the entire stake (including top)');
+        [x,y] = ginput(pixels);
+        %%% select 5 points from each image, and then 
+         for i = 1:pixels
+             if g == 1
+         redThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
+         greenThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
+         blueThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
+             end
+             
+            if g == 2
+         redThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
+         greenThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
+         blueThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
+            end 
+            
+            if g == length(thresholdImages)
+         redThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
+         greenThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
+         blueThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
+            end
+         
+         end
+        % close image and start over  
+        count = count + pixels; 
+        close all;  
+         
+        end
+        
+        close all;
+                        
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+        redThresholdFallLow = min(redThresholdFall);
+        redThresholdFallHigh = max(redThresholdFall);
+        greenThresholdFallLow = min(greenThresholdFall);
+        greenThresholdFallHigh = max(greenThresholdFall);
+        blueThresholdFallLow = min(blueThresholdFall);
+        blueThresholdFallHigh = max(blueThresholdFall);
+        
+        redThresholdWinterLow = min(redThresholdWinter);
+        redThresholdWinterHigh = max(redThresholdWinter);
+        greenThresholdWinterLow = min(greenThresholdWinter);
+        greenThresholdWinterHigh = max(greenThresholdWinter);
+        blueThresholdWinterLow = min(blueThresholdWinter);
+        blueThresholdWinterHigh = max(blueThresholdWinter);
+        
+        redThresholdSpringLow = min(redThresholdSpring);
+        redThresholdSpringHigh = max(redThresholdSpring);
+        greenThresholdSpringLow = min(greenThresholdSpring);
+        greenThresholdSpringHigh = max(greenThresholdSpring);
+        blueThresholdSpringLow = min(blueThresholdSpring);
+        blueThresholdSpringHigh = max(blueThresholdSpring);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %Test using the distance formula ... 
+        % could improve how this is done. 
+        
+        redPixel = [238.7333  8.3333 76.6000 ];
+        r = originalImage(:, :, 1)-redPixel(1);
+        g = originalImage(:, :, 2)-redPixel(2);
+        b = originalImage(:,:, 3)-redPixel(3);
+        newImage = sqrtm(r.^2 + g.^2 + b.^2);
+        distanceMask = double(newImage)/255;
+        imshow(distanceMask);
+        % hist(double(newImage(:)));
+        %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    %%%%% 4) Run the code on ALL Images. You will have to crop the ENTIRE stake
+    %%%%% again. This reduces background noise pixels. 
+    
+        count=0; %% don't want the test photo
+        
+        PixelLengths   = zeros([1 size(listing,1)]); 
+        app.SnowDepth = zeros([1 size(listing,1)]); % in centimeters
+    
+    for i=1:size(listing,1) % started when there was snow and no tree in canopy
+        % testing -- starting at two instead
+        count=count+1;
+    	%%%%%%%%%%%%%%%%%%%% Read in image into an array. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        [rgbImage] = imread(listing(i).name);
+        rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
+        % imshow(listing(1).name) %testing
+        % impixelinfo() %testing
+        imshow(rgbImage)
+        title('Crop the entire of the stake');
+        
+        if count==1
+            [X,Y]         = ginput(4); % select where to crop for all future images
+        end
+       
+        rgbImage = (rgbImage(min(Y):max(Y),min(X):max(X),:));
+        
+        % Break RGB image into seperate RGB matrices
+    	redBand = rgbImage(:, :, 1); 
+    	greenBand = rgbImage(:, :, 2); 
+    	blueBand = rgbImage(:, :, 3); 
+      
+        %%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%% switch from count to creationDateTime to do it by time of year? Not
+        %%% sure which is better 
+        if count < round(size(listing,1)/4)
+            redMask = (redBand >= redThresholdFallLow) & (redBand <= redThresholdFallHigh);
+            greenMask = (greenBand >= greenThresholdFallLow) & (greenBand <= greenThresholdFallHigh);
+            blueMask = (blueBand >= blueThresholdFallLow) & (blueBand <= blueThresholdFallHigh);
+        
+        elseif count < round(size(listing,1)*3/4)
+            redMask = (redBand >= redThresholdWinterLow) & (redBand <= redThresholdWinterHigh);
+            greenMask = (greenBand >= greenThresholdWinterLow) & (greenBand <= greenThresholdWinterHigh);
+            blueMask = (blueBand >= blueThresholdWinterLow) & (blueBand <= blueThresholdWinterHigh); 
+        
+        else
+            redMask = (redBand >= redThresholdSpringLow) & (redBand <= redThresholdSpringHigh);
+            greenMask = (greenBand >= greenThresholdSpringLow) & (greenBand <= greenThresholdSpringHigh);
+            blueMask = (blueBand >= blueThresholdSpringLow) & (blueBand <= blueThresholdSpringHigh);
+        end 
+        
+            redObjectsMask = uint8(redMask & greenMask & blueMask);
+        
+        %%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
+                figure
+                set(gcf,'Position',[23         531        1658         302]) %katie update 
+                subplot(1,4,1)
+                imshow(redObjectsMask, []);
+                caption = sprintf('Mask of Only\nThe Red Objects');
+                title(caption, 'FontSize', fontSize);    
+    
+                % We're going to filter out small objects.
+                smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.    
+                redObjectsMask = uint8(bwareaopen(redObjectsMask, smallestAcceptableArea));
+                subplot(1,4,2)
+                imshow(redObjectsMask, []);
+                fontSize = 13;
+                caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
+                title(caption, 'FontSize', fontSize);
+    
+                % Smooth the border using a morphological closing operation, imclose().
+                % The value 4 could be updated if you notice that it is not
+                % capturing the full width of the disk
+                structuringElement = strel('disk', 50); 
+                redObjectsMask = imclose(redObjectsMask, structuringElement);
+                subplot(1,4,3)
+                imshow(redObjectsMask, []);
+                fontSize = 16;
+                title('Border smoothed', 'FontSize', fontSize);
+    
+    
+                % Fill in any holes in the regions, since they are most likely red also.
+                redObjectsMask = uint8(imfill(redObjectsMask, 'holes'));
+                subplot(1,4,4)
+                imshow(redObjectsMask, []);
+                title('Regions Filled', 'FontSize', fontSize);
+        
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+                    % Hough Lines Code is the Algorithm that Detects the Longest Line
+                    [H,T,R] = hough(redObjectsMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
+                    P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix 
+                    lines = houghlines(redObjectsMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
+                    
+        %%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+                    figure,
+                    set(gcf,'Position',[23         531        1658         302]) %katie update
+                    subplot(1,2,1)
+                    imshow(rgbImage), hold on
+                    title(sprintf('%s\n%s','All Lines','Detected From Hough Transform'))
+                    
+                    max_len = 0; % initialize
+                    % Visualize X number of lines from the houghline output
+                    for k = 1:length(lines)
+                       xy = [lines(k).point1; lines(k).point2];
+                       plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
+    % 
+    %                    % Plot beginnings and ends of lines
+                       plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
+                       plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+                       
+                       % Determine the endpoints, and length in pixels of the longest line segment
+                       len = norm(lines(k).point1 - lines(k).point2);
+                       if ( len > max_len)
+                          max_len = len; % length in pixels
+                          xy_long = xy;  % coordinates 
+                          % xy_long
+                          %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
+                          %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
+    
+                       end
+                    end
+    
+                    % Plot the longest line segment to see how well the algorithm worked for each image
+                        subplot(1,2,2),imshow(rgbImage)
+                        title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
+                        hold on
+                        plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
+                        plot(xy_long(1,1),xy_long(1,2),'ro');
+                        plot(xy_long(2,1),xy_long(2,2),'bo');
+    
+                    % Katie addition, lines 200 - 215
+                    % calculate depth from max_len from snow-free & snow image
+                    % store SnowDepth into a matrix, indexed by image number
+                        
+                        PixelLengths(i) = max_len;
+                        %%take a snow free image where it gets the whole stake
+                        %%
+                        SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
+                        SnowPixels = max_len ;      
+                        app.SnowDepth(i) = (SnowFreePixels - SnowPixels) * LengthPerPixel;
+                        %print(SnowDepth(i)) %testing
+                       
+                        pause()  %%%%%%%%%%THIS IS THE PAUSE FOR IMMEDIATE VIEWING  
+        
+            close all; clc
+        
+        
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%% 5) View plot of Snow Depth vs. Time
+        
+        % convert date into datetime format
+        % make sure it's the right date (metadata from the photos)
+         for z=1:size(listing,1)
+             f = fullfile(listing(z).folder,(listing(z).name));   
+             d = imfinfo(f).DateTime();
+             creation = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
+             app.creationDateTime(z) = creation;
+         end
+        
+        %%% all values
+        plot(app.UIAxes, app.creationDateTime,app.SnowDepth);
+           %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+          % plot(app.UIAxes,peaks);
+        end
+
+        % Button pushed function: SelectCSVDestinationButton
+        function SelectCSVDestinationButtonPushed(app, event)
+            app.CSVFolder = uigetdir;
+            disp(app.CSVFolder);
+        end
+
+        % Button pushed function: ExportCSVButton
+        function ExportCSVButtonPushed(app, event)
+            timeseries = timetable(app.creationDateTime(:),app.SnowDepth(:));
+            writetimetable(timeseries,strcat(app.CSVFolder, app.CSVfilename));
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 640 480];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create SelectFolderofImagesButton
+            app.SelectFolderofImagesButton = uibutton(app.UIFigure, 'push');
+            app.SelectFolderofImagesButton.ButtonPushedFcn = createCallbackFcn(app, @SelectFolderofImagesButtonPushed, true);
+            app.SelectFolderofImagesButton.Position = [13 332 156 22];
+            app.SelectFolderofImagesButton.Text = '1) Select Folder of Images';
+
+            % Create CSVFileNameLabel
+            app.CSVFileNameLabel = uilabel(app.UIFigure);
+            app.CSVFileNameLabel.HorizontalAlignment = 'right';
+            app.CSVFileNameLabel.Position = [13 241 100 22];
+            app.CSVFileNameLabel.Text = '3) CSV File Name';
+
+            % Create CSVFileNameEditField
+            app.CSVFileNameEditField = uieditfield(app.UIFigure, 'text');
+            app.CSVFileNameEditField.ValueChangedFcn = createCallbackFcn(app, @CSVFileNameEditFieldValueChanged, true);
+            app.CSVFileNameEditField.Position = [131 241 107 22];
+
+            % Create RunButton
+            app.RunButton = uibutton(app.UIFigure, 'push');
+            app.RunButton.ButtonPushedFcn = createCallbackFcn(app, @RunButtonPushed, true);
+            app.RunButton.Position = [51 115 151 59];
+            app.RunButton.Text = '4) Run';
+
+            % Create AutomatedSnowDepthsfromSnowPolesLabel
+            app.AutomatedSnowDepthsfromSnowPolesLabel = uilabel(app.UIFigure);
+            app.AutomatedSnowDepthsfromSnowPolesLabel.FontSize = 24;
+            app.AutomatedSnowDepthsfromSnowPolesLabel.FontWeight = 'bold';
+            app.AutomatedSnowDepthsfromSnowPolesLabel.Position = [92 434 502 31];
+            app.AutomatedSnowDepthsfromSnowPolesLabel.Text = 'Automated Snow Depths from Snow Poles';
+
+            % Create ExportCSVButton
+            app.ExportCSVButton = uibutton(app.UIFigure, 'push');
+            app.ExportCSVButton.ButtonPushedFcn = createCallbackFcn(app, @ExportCSVButtonPushed, true);
+            app.ExportCSVButton.Position = [403 59 100 22];
+            app.ExportCSVButton.Text = '5) Export CSV';
+
+            % Create SelectCSVDestinationButton
+            app.SelectCSVDestinationButton = uibutton(app.UIFigure, 'push');
+            app.SelectCSVDestinationButton.ButtonPushedFcn = createCallbackFcn(app, @SelectCSVDestinationButtonPushed, true);
+            app.SelectCSVDestinationButton.Position = [13 289 153 22];
+            app.SelectCSVDestinationButton.Text = '2) Select CSV Destination';
+
+            % Create Version11Label
+            app.Version11Label = uilabel(app.UIFigure);
+            app.Version11Label.Position = [289 403 65 22];
+            app.Version11Label.Text = 'Version 1.1';
+
+            % Create NotePleaseincludecsvattheendofyourfilenameLabel
+            app.NotePleaseincludecsvattheendofyourfilenameLabel = uilabel(app.UIFigure);
+            app.NotePleaseincludecsvattheendofyourfilenameLabel.FontSize = 8;
+            app.NotePleaseincludecsvattheendofyourfilenameLabel.Position = [20 219 245 24];
+            app.NotePleaseincludecsvattheendofyourfilenameLabel.Text = 'Note: Please include .csv at the end of your file name';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.UIFigure);
+            title(app.UIAxes, 'Snow Depth (cm)')
+            xlabel(app.UIAxes, 'Time')
+            ylabel(app.UIAxes, 'Snow Depth (cm)')
+            zlabel(app.UIAxes, 'Z')
+            app.UIAxes.PlotBoxAspectRatio = [1.94573643410853 1 1];
+            app.UIAxes.Position = [249 89 380 302];
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = test2
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
