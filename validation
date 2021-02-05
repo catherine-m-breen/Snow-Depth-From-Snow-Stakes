@@ -5,7 +5,7 @@
 clear all; close all; clc
 
 % camera number
-cameraNumber = 'test' ; %%% FILL IN HERE
+cameraNumber = 'W6A' ; %%% FILL IN HERE
 
 %%%%%% metadata
 %%% Go to the directory with the images
@@ -23,8 +23,16 @@ stake_length_cm = 304.8; %% cm/ make this the first image or the actual length %
 
 PixelLengths   = zeros([1 size(listing,1)]);
 SnowDepth = zeros([1 size(listing,1)]); % in centimeters
+SnowDepth_distance = zeros([1 size(listing,1)]);
 
-for i=1:size(listing,1) % started when there was snow and no tree in canopy
+%%%%%%%%%%
+topX = zeros([1 size(listing,1)]);
+topY = zeros([1 size(listing,1)]);
+bottomX = zeros([1 size(listing,1)]);
+bottomY = zeros([1 size(listing,1)]);
+distance = zeros([1 size(listing,1)]);
+
+for i=1: 4 % size(listing,1) % started when there was snow and no tree in canopy
 
     img = imread(listing(i).name);
     
@@ -43,6 +51,12 @@ for i=1:size(listing,1) % started when there was snow and no tree in canopy
     bottom = ginput(1); % ...and the bottom
     x = [top(1),bottom(1)];
     y = [top(2),bottom(2)];
+    
+    %%% store them for distance formula %%%
+    topX(i) = top(1);
+    topY(i) = top(2);
+    bottomX(i) = bottom(1); 
+    bottomY(i) = bottom(2);
 
     %%% rgb values along the top and bottom of the stake %% rgb_line
     % x and y must be vector pairs
@@ -56,6 +70,11 @@ for i=1:size(listing,1) % started when there was snow and no tree in canopy
     SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
     SnowPixels = length(b);
     SnowDepth(i) = 304.8 - (SnowPixels * LengthPerPixel); %SnowDepth(i)
+    
+    %%%%%
+    % distance formula
+    distance(i) = sqrt((topX(i)-bottomX(i))^2+(topY(i)-bottomY(i))^2);
+    SnowDepth_distance(i) =  304.8 - (distance(i) * LengthPerPixel);
    
 end
 
@@ -74,9 +93,11 @@ legend('Raw');%,'SNOTEL');
 ylabel('Snow Depth');
 title('Snow Depth (cm) from Snow Stakes');
 
+
 %%% take the minimum value of each day
 timeseries = timetable(creationDateTime(:),SnowDepth(:));
 timeseriesRaw = timetable(creationDateTime(:),PixelLengths(:));
+timeseriesDistance = timetable(creationDateTime(:),distance(:));
 
 %%% write two time tables 1) the snow depths
 %%% and 2) the pixel lengths (in case the calibration is wrong)
