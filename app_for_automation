@@ -7,6 +7,8 @@ classdef test2 < matlab.apps.AppBase
         CSVFileNameLabel            matlab.ui.control.Label
         CSVFileNameEditField        matlab.ui.control.EditField
         RunButton                   matlab.ui.control.Button
+        CalibrateButton             matlab.ui.control.Button
+        SetThresholdButton          matlab.ui.control.Button
         AutomatedSnowDepthsfromSnowPolesLabel  matlab.ui.control.Label
         ExportCSVButton             matlab.ui.control.Button
         SelectCSVDestinationButton  matlab.ui.control.Button
@@ -17,9 +19,10 @@ classdef test2 < matlab.apps.AppBase
 
     
     properties (Access = private)
-        imageFolder % Description
+        imageFolder % 
         CSVfilename % Description
         CSVFolder % Description
+        LengthPerPixel % Pixel Per Centimeter
         SnowDepth % Description
         creationDateTime % Description
     end
@@ -40,164 +43,61 @@ classdef test2 < matlab.apps.AppBase
             disp(app.CSVfilename);
         end
 
-        % Button pushed function: RunButton
-        function RunButtonPushed(app, event)
+        % Button pushed function: CalibrateButton
+        function CalibrateButtonPushed(app, event)
            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
            %%%%% Update this with a call to a function rather than a step
            %%%%% through %%%%%%%%%%%%%%%%
            addpath(app.imageFolder)
-
            listing = dir([app.imageFolder,'/*.JPG']);
-
-           filter = [.2 .3 0; .6 .7 1];%[0.1 0.1 0.1; 0.6 0.8 0.6]; %%%%%%%%optional
-
-           pole_length = 150; % centimeters
-           top_of_pole_length = 10;
               
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%% 2) Calibrate to the top of the stake. Once it finds the line,
     %%% make sure to press the space bar to continue.
-    
-        originalImage = imread(listing(1).name); % read in Calibration Image
+           
+           originalImage = imread(listing(1).name); % read in Calibration Image
     % RotatedImage = imrotate(originalImage,90); % Rotate Image so that you can make it larger on your screen
     
-        imshow(originalImage); % show image
-        title('Crop the top of the stake');
-        [X,Y]         = ginput(4); % crop the image by clicking around the yellow top of the pole
+           imshow(originalImage); % show image
+           title('Crop the top of the stake (contrasting color band)');
+           [X,Y]         = ginput(4); % crop the image by clicking around the yellow top of the pole
     
-        topOfStake = (originalImage(min(Y):max(Y),min(X):max(X),:)); % Clip the Image based on `ginput.m`
-        topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
-        imshow(topOfStake);
-        title('Select 6 pixels at top of stake'); % Place title here
-        [x,y] = ginput (6);
-    
-        redTop   = zeros([1 5]); 
-        greenTop   = zeros([1 5]); 
-        blueTop = zeros([1 5]); 
-    
-        for i = 1:5
-         redTop(i) = topOfStake(int16(y(i)), int16(x(i)), 1);
-         greenTop(i) = topOfStake(int16(y(i)), int16(x(i)), 2);
-         blueTop(i) = topOfStake(int16(y(i)), int16(x(i)), 3);
+           topOfStake = (originalImage(min(Y):max(Y),min(X):max(X),:)); % Clip the Image based on `ginput.m`
+            %topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
+           imshow(topOfStake);
+           title('Select top of stake'); % Place title here
+           top = ginput(1); % Opens crosshairs to select the top...
+           title('Select bottom of contrasting color band');
+           bottom = ginput(1); % ...and the bottom
+           x = [top(1),bottom(1)];
+           y = [top(2),bottom(2)];
+
+      %%% rgb values along the top and bottom of the stake %% rgb_line
+    % x and y must be vector pairs
+           rgb = improfile(originalImage,x,y); %does not have to be straight up and down!
+           r = rgb(:,:,1);
+           g = rgb(:,:,2);
+           b = rgb(:,:,3);
+
+        %%%%%
+           app.LengthPerPixel = 10/b;
+           close all;  
+           disp(app.LengthPerPixel);
         end
-    
-    % Break RGB image into seperate RGB matrices
-        redBandTop = topOfStake(:, :, 1);
-        greenBandTop = topOfStake(:, :, 2);
-        blueBandTop = topOfStake(:, :, 3);
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-        redThresholdLowTop = min(redTop);
-        redThresholdHighTop = max(redTop);
-        greenThresholdLowTop = min(greenTop);
-        greenThresholdHighTop = max(greenTop);
-        blueThresholdLowTop = min(blueTop);
-        blueThresholdHighTop = max(blueTop);
-        
-        %%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
-        
-        redMaskTop = (redBandTop >= redThresholdLowTop) & (redBandTop <= redThresholdHighTop);
-        greenMaskTop = (greenBandTop >= greenThresholdLowTop) & (greenBandTop <= greenThresholdHighTop);
-        blueMaskTop = (blueBandTop >= blueThresholdLowTop) & (blueBandTop <= blueThresholdHighTop);
-        
-        topOftheStakeMask = uint8(redMaskTop & greenMaskTop & blueMaskTop);
-    
-    %%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
-        figure
-        set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
-        subplot(1,4,1); %% this throws it off
-        imshow(topOftheStakeMask, []);
-        caption = sprintf('Mask of Only\nThe Yellow Objects');
-        title(caption, 'FontSize', fontSize);
-        
-        % We're going to filter out small objects.
-        smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.
-        topOftheStakeMask = uint8(bwareaopen(topOftheStakeMask, smallestAcceptableArea));
-        subplot(1,4,2)
-        imshow(topOftheStakeMask, []);
-        fontSize = 13;
-        caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
-        title(caption, 'FontSize', fontSize);
-        
-        % Smooth the border using a morphological closing operation, imclose().
-        structuringElement = strel('disk', 4);
-        topOftheStakeMask = imclose(topOftheStakeMask, structuringElement);
-        subplot(1,4,3)
-        imshow(topOftheStakeMask, []);
-        fontSize = 16;
-        title('Border smoothed', 'FontSize', fontSize);
-    
-        % Fill in any holes in the regions, since they are most likely red also.
-        topOftheStakeMask = uint8(imfill(topOftheStakeMask, 'holes'));
-        subplot(1,4,4)
-        imshow(topOftheStakeMask, []);
-        title('Regions Filled', 'FontSize', fontSize);
-    
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-        % Hough Lines Code is the Algorithm that Detects the Longest Line
-        [H,T,R] = hough(topOftheStakeMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
-        P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix
-        lines = houghlines(topOftheStakeMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-        figure
-        set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
-        subplot(1,2,1)
-        imshow(topOfStake), hold on
-        title(sprintf('%s\n%s','All Lines','Detected From Hough Transform')) %UPDATE
-        
-        max_len = 0; % initialize
-    
-        % Visualize X number of lines from the houghline output
-        for k = 1:length(lines)
-            xy = [lines(k).point1; lines(k).point2];
-            plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
-            %
-            %                    % Plot beginnings and ends of lines
-            plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
-            plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
-            
-            % Determine the endpoints, and length in pixels of the longest line segment
-            len = norm(lines(k).point1 - lines(k).point2);
-            if ( len > max_len)
-                max_len = len; % length in pixels
-                xy_long = xy;  % coordinates
-                % xy_long
-                %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
-                %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
-                
-            end
-        end
-    
-        % Plot the longest line segment to see how well the algorithm worked for each image
-        subplot(1,2,2),imshow(topOfStake)
-        title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
-        hold on
-        plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
-        plot(xy_long(1,1),xy_long(1,2),'ro');
-        plot(xy_long(2,1),xy_long(2,2),'bo');
-        
-        % number of pixels that make up the top
-        PixelCount = max_len;
-        LengthPerPixel = top_of_pole_length/PixelCount; %cm/pixel
-        
-        pause();
-        
-        close all; clc 
-    
+  
+ % Button pushed function: ThresholdButton
+        function SetThresholdButtonPushed(app, event)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%                      
     %%% 3) select threshold of the whole stake. Once it finds the final line,
     %%% make sure to press the space bar to continue.
     
     % take two photos from early, mid, and late season
     % store the values 
+    
+        %these next three lines are redundant but seem to be the only way it
+    %works
+        addpath(app.imageFolder)
+        listing = dir([app.imageFolder,'/*.JPG']);
     
         % read in 3 threshold images
         firstImage = listing(1);
@@ -299,7 +199,11 @@ classdef test2 < matlab.apps.AppBase
         % hist(double(newImage(:)));
         %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
+   
+        end
+        
+    % Button pushed function: RunButton
+        function RunButtonPushed(app, event)     
     %%%%% 4) Run the code on ALL Images. You will have to crop the ENTIRE stake
     %%%%% again. This reduces background noise pixels. 
     
@@ -313,7 +217,7 @@ classdef test2 < matlab.apps.AppBase
         count=count+1;
     	%%%%%%%%%%%%%%%%%%%% Read in image into an array. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         [rgbImage] = imread(listing(i).name);
-        rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
+        %rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
         % imshow(listing(1).name) %testing
         % impixelinfo() %testing
         imshow(rgbImage)
@@ -441,7 +345,7 @@ classdef test2 < matlab.apps.AppBase
                         %%
                         SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
                         SnowPixels = max_len ;      
-                        app.SnowDepth(i) = (SnowFreePixels - SnowPixels) * LengthPerPixel;
+                        app.SnowDepth(i) = (SnowFreePixels - SnowPixels) * app.LengthPerPixel;
                         %print(SnowDepth(i)) %testing
                        
                         pause()  %%%%%%%%%%THIS IS THE PAUSE FOR IMMEDIATE VIEWING  
@@ -510,12 +414,25 @@ classdef test2 < matlab.apps.AppBase
             app.CSVFileNameEditField.ValueChangedFcn = createCallbackFcn(app, @CSVFileNameEditFieldValueChanged, true);
             app.CSVFileNameEditField.Position = [131 241 107 22];
 
+            % Create CalibrateButton
+            app.CalibrateButton = uibutton(app.UIFigure, 'push');
+            app.CalibrateButton.ButtonPushedFcn = createCallbackFcn(app, @CalibrateButtonPushed, true);
+            app.CalibrateButton.Position = [51 150 160 50];
+            app.CalibrateButton.Text = '4) Calibrate LengthPerPixel';
+            
+            % Create SetThresholdButton
+            app.SetThresholdButton = uibutton(app.UIFigure, 'push');
+            app.SetThresholdButton.ButtonPushedFcn = createCallbackFcn(app, @SetThresholdButtonPushed, true);
+            app.SetThresholdButton.Position = [51 90 160 50];
+            app.SetThresholdButton.Text = '5) Set Threshold';
+            
             % Create RunButton
             app.RunButton = uibutton(app.UIFigure, 'push');
             app.RunButton.ButtonPushedFcn = createCallbackFcn(app, @RunButtonPushed, true);
-            app.RunButton.Position = [51 115 151 59];
-            app.RunButton.Text = '4) Run';
+            app.RunButton.Position = [51 30 160 50];
+            app.RunButton.Text = '6) Run';
 
+           
             % Create AutomatedSnowDepthsfromSnowPolesLabel
             app.AutomatedSnowDepthsfromSnowPolesLabel = uilabel(app.UIFigure);
             app.AutomatedSnowDepthsfromSnowPolesLabel.FontSize = 24;
@@ -527,7 +444,7 @@ classdef test2 < matlab.apps.AppBase
             app.ExportCSVButton = uibutton(app.UIFigure, 'push');
             app.ExportCSVButton.ButtonPushedFcn = createCallbackFcn(app, @ExportCSVButtonPushed, true);
             app.ExportCSVButton.Position = [403 59 100 22];
-            app.ExportCSVButton.Text = '5) Export CSV';
+            app.ExportCSVButton.Text = '7) Export CSV';
 
             % Create SelectCSVDestinationButton
             app.SelectCSVDestinationButton = uibutton(app.UIFigure, 'push');
@@ -544,7 +461,7 @@ classdef test2 < matlab.apps.AppBase
             app.NotePleaseincludecsvattheendofyourfilenameLabel = uilabel(app.UIFigure);
             app.NotePleaseincludecsvattheendofyourfilenameLabel.FontSize = 8;
             app.NotePleaseincludecsvattheendofyourfilenameLabel.Position = [20 219 245 24];
-            app.NotePleaseincludecsvattheendofyourfilenameLabel.Text = 'Note: Please include .csv at the end of your file name';
+            app.NotePleaseincludecsvattheendofyourfilenameLabel.Text = 'Note: Please include .csv at end & press ENTER when done.';
 
             % Create UIAxes
             app.UIAxes = uiaxes(app.UIFigure);
