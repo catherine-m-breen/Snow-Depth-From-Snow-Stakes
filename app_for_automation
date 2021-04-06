@@ -186,7 +186,7 @@ classdef app_april5_2020 < matlab.apps.AppBase
         
         PixelLengths   = zeros([1 size(listing,1)]); 
         app.SnowDepth = zeros([1 size(listing,1)]); % in centimeters
-        app.creationDaateTime = zeros([1 size(listing,1)]);
+        app.creationDateTime = zeros([1 size(listing,1)]);
     
     for i=1:size(listing,1) % started when there was snow and no tree in canopy
         % testing -- starting at two instead
@@ -327,6 +327,9 @@ classdef app_april5_2020 < matlab.apps.AppBase
              creation = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
              app.creationDateTime(z) = creation;
          end
+        
+        disp(app.SnowDepth);
+        disp(app.creationDateTime);
         
         %%% all values
         plot(app.UIAxes, app.creationDateTime,app.SnowDepth);
