@@ -186,7 +186,8 @@ classdef app_april5_2020 < matlab.apps.AppBase
         
         PixelLengths   = zeros([1 size(listing,1)]); 
         app.SnowDepth = zeros([1 size(listing,1)]); % in centimeters
-        app.creationDateTime = zeros([1 size(listing,1)]);
+        %app.creationDateTime = datetime([1 size(listing,1)]);
+        app.creationDateTime = NaT(1, size(listing,1));
     
     for i=1:size(listing,1) % started when there was snow and no tree in canopy
         % testing -- starting at two instead
@@ -311,7 +312,7 @@ classdef app_april5_2020 < matlab.apps.AppBase
                        
                         pause()  %%%%%%%%%%THIS IS THE PAUSE FOR IMMEDIATE VIEWING  
         
-            close all; clc
+            close all; %clc
         
         
         end
@@ -324,8 +325,8 @@ classdef app_april5_2020 < matlab.apps.AppBase
          for z=1:size(listing,1)
              f = fullfile(listing(z).folder,(listing(z).name));   
              d = imfinfo(f).DateTime();
-             creation = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
-             app.creationDateTime(z) = creation;
+             app.creationDateTime(z) = datetime(d, 'InputFormat','yyyy:MM:dd HH:mm:ss');
+             %app.creationDateTime(z) = creation;
          end
         
         disp(app.SnowDepth);
@@ -347,6 +348,7 @@ classdef app_april5_2020 < matlab.apps.AppBase
         function ExportCSVButtonPushed(app, event)
             timeseries = timetable(app.creationDateTime(:),app.SnowDepth(:));
             writetimetable(timeseries,strcat(app.CSVFolder, app.CSVfilename));
+            disp(strcat(app.CSVFolder, app.CSVfilename));
         end
     end
 
