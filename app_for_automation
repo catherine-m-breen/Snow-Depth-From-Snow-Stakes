@@ -1,4 +1,4 @@
-classdef test2 < matlab.apps.AppBase
+classdef app_april5_2020 < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
@@ -23,6 +23,16 @@ classdef test2 < matlab.apps.AppBase
         CSVfilename % Description
         CSVFolder % Description
         LengthPerPixel % Pixel Per Centimeter
+        
+        %% these should be adjusted if the thresehold settings are changed
+        redThresholdLow
+        redThresholdHigh 
+        greenThresholdLow 
+        greenThresholdHigh 
+        blueThresholdLow
+        blueThresholdHigh
+        %%
+        
         SnowDepth % Description
         creationDateTime % Description
     end
@@ -80,7 +90,7 @@ classdef test2 < matlab.apps.AppBase
            b = rgb(:,:,3);
 
         %%%%%
-           app.LengthPerPixel = 10/b;
+           app.LengthPerPixel = 10/(length(b));
            close all;  
            disp(app.LengthPerPixel);
         end
@@ -95,7 +105,7 @@ classdef test2 < matlab.apps.AppBase
     % store the values 
     
         %these next three lines are redundant but seem to be the only way it
-    %works
+        %works
         addpath(app.imageFolder)
         listing = dir([app.imageFolder,'/*.JPG']);
     
@@ -107,22 +117,14 @@ classdef test2 < matlab.apps.AppBase
         numThresholdImages = length(thresholdImages);
         pixels = 10; %% how many pixels you want to use to calibrate
         
-        redThresholdFall   = zeros([1 (pixels)]); 
-        greenThresholdFall   = zeros([1 (pixels)]); 
-        blueThresholdFall = zeros([1 (pixels)]);
-        
-        redThresholdWinter   = zeros([1 (pixels)]); 
-        greenThresholdWinter   = zeros([1 (pixels)]); 
-        blueThresholdWinter = zeros([1 (pixels)]);
-        
-        redThresholdSpring   = zeros([1 (pixels)]); 
-        greenThresholdSpring   = zeros([1 (pixels)]); 
-        blueThresholdSpring = zeros([1 (pixels)]);
-    
+        redThreshold   = zeros([1 (pixels*numThresholdImages)]);
+        greenThreshold   = zeros([1 (pixels*numThresholdImages)]);
+        blueThreshold = zeros([1 (pixels*numThresholdImages)]);
+
         %%%%% initialize loop 
         count = 0;
         for g = 1:length(thresholdImages)
-        thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
+        %thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
         imshow(thresholdImages{g}); % show image
         title('Crop the entire stake to select threshold values');
         [U,V]         = ginput(4); % crop the image by clicking around the yellow top of the pole
@@ -131,73 +133,40 @@ classdef test2 < matlab.apps.AppBase
         imshow(thresholdImages{g});
         title('Select 10 pixels of the entire stake (including top)');
         [x,y] = ginput(pixels);
-        %%% select 5 points from each image, and then 
-         for i = 1:pixels
-             if g == 1
-         redThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
-         greenThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
-         blueThresholdFall(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
-             end
-             
-            if g == 2
-         redThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
-         greenThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
-         blueThresholdWinter(i+count-10) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
-            end 
+        %%% select 5 points from each image, and then
+        for i = 1:pixels
+            redThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
+            greenThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
+            blueThreshold(i+count) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
             
-            if g == length(thresholdImages)
-         redThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 1);
-         greenThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 2);
-         blueThresholdSpring(i+count-20) = thresholdImages{g}(int16(y(i)), int16(x(i)), 3);
-            end
-         
-         end
-        % close image and start over  
-        count = count + pixels; 
-        close all;  
-         
+        end
+        % close image and start over
+        count = count + pixels;
+        close all;
+        
         end
         
         close all;
-                        
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-        redThresholdFallLow = min(redThresholdFall);
-        redThresholdFallHigh = max(redThresholdFall);
-        greenThresholdFallLow = min(greenThresholdFall);
-        greenThresholdFallHigh = max(greenThresholdFall);
-        blueThresholdFallLow = min(blueThresholdFall);
-        blueThresholdFallHigh = max(blueThresholdFall);
         
-        redThresholdWinterLow = min(redThresholdWinter);
-        redThresholdWinterHigh = max(redThresholdWinter);
-        greenThresholdWinterLow = min(greenThresholdWinter);
-        greenThresholdWinterHigh = max(greenThresholdWinter);
-        blueThresholdWinterLow = min(blueThresholdWinter);
-        blueThresholdWinterHigh = max(blueThresholdWinter);
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        redThresholdSpringLow = min(redThresholdSpring);
-        redThresholdSpringHigh = max(redThresholdSpring);
-        greenThresholdSpringLow = min(greenThresholdSpring);
-        greenThresholdSpringHigh = max(greenThresholdSpring);
-        blueThresholdSpringLow = min(blueThresholdSpring);
-        blueThresholdSpringHigh = max(blueThresholdSpring);
+        app.redThresholdLow = min(redThreshold);
+        app.redThresholdHigh = max(redThreshold);
+        app.greenThresholdLow = min(greenThreshold);
+        app.greenThresholdHigh = max(greenThreshold);
+        app.blueThresholdLow = min(blueThreshold);
+        app.blueThresholdHigh = max(blueThreshold);
     
+        disp(app.redThresholdLow);
+        disp(app.redThresholdHigh);
+        disp(app.greenThresholdLow);
+        disp(app.greenThresholdHigh);
+        disp(app.blueThresholdLow);
+        disp(app.blueThresholdHigh);
+        
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %Test using the distance formula ... 
-        % could improve how this is done. 
-        
-        redPixel = [238.7333  8.3333 76.6000 ];
-        r = originalImage(:, :, 1)-redPixel(1);
-        g = originalImage(:, :, 2)-redPixel(2);
-        b = originalImage(:,:, 3)-redPixel(3);
-        newImage = sqrtm(r.^2 + g.^2 + b.^2);
-        distanceMask = double(newImage)/255;
-        imshow(distanceMask);
-        % hist(double(newImage(:)));
-        %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    
         end
@@ -207,19 +176,23 @@ classdef test2 < matlab.apps.AppBase
     %%%%% 4) Run the code on ALL Images. You will have to crop the ENTIRE stake
     %%%%% again. This reduces background noise pixels. 
     
+        %these next three lines are redundant but seem to be the only way it
+        %works
+        addpath(app.imageFolder)
+        listing = dir([app.imageFolder,'/*.JPG']);
+        fontSize=12;
+    
         count=0; %% don't want the test photo
         
         PixelLengths   = zeros([1 size(listing,1)]); 
         app.SnowDepth = zeros([1 size(listing,1)]); % in centimeters
+        app.creationDaateTime = zeros([1 size(listing,1)]);
     
     for i=1:size(listing,1) % started when there was snow and no tree in canopy
         % testing -- starting at two instead
         count=count+1;
     	%%%%%%%%%%%%%%%%%%%% Read in image into an array. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         [rgbImage] = imread(listing(i).name);
-        %rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
-        % imshow(listing(1).name) %testing
-        % impixelinfo() %testing
         imshow(rgbImage)
         title('Crop the entire of the stake');
         
@@ -237,23 +210,11 @@ classdef test2 < matlab.apps.AppBase
         %%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%% switch from count to creationDateTime to do it by time of year? Not
         %%% sure which is better 
-        if count < round(size(listing,1)/4)
-            redMask = (redBand >= redThresholdFallLow) & (redBand <= redThresholdFallHigh);
-            greenMask = (greenBand >= greenThresholdFallLow) & (greenBand <= greenThresholdFallHigh);
-            blueMask = (blueBand >= blueThresholdFallLow) & (blueBand <= blueThresholdFallHigh);
-        
-        elseif count < round(size(listing,1)*3/4)
-            redMask = (redBand >= redThresholdWinterLow) & (redBand <= redThresholdWinterHigh);
-            greenMask = (greenBand >= greenThresholdWinterLow) & (greenBand <= greenThresholdWinterHigh);
-            blueMask = (blueBand >= blueThresholdWinterLow) & (blueBand <= blueThresholdWinterHigh); 
-        
-        else
-            redMask = (redBand >= redThresholdSpringLow) & (redBand <= redThresholdSpringHigh);
-            greenMask = (greenBand >= greenThresholdSpringLow) & (greenBand <= greenThresholdSpringHigh);
-            blueMask = (blueBand >= blueThresholdSpringLow) & (blueBand <= blueThresholdSpringHigh);
-        end 
-        
-            redObjectsMask = uint8(redMask & greenMask & blueMask);
+        redMask = (redBand >= app.redThresholdLow) & (redBand <= app.redThresholdHigh);
+        greenMask = (greenBand >= app.greenThresholdLow) & (greenBand <= app.greenThresholdHigh);
+        blueMask = (blueBand >= app.blueThresholdLow) & (blueBand <= app.blueThresholdHigh);
+       
+        redObjectsMask = uint8(redMask & greenMask & blueMask);
         
         %%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
                 figure
@@ -481,7 +442,7 @@ classdef test2 < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = test2
+        function app = app_april5_2020
 
             % Create UIFigure and components
             createComponents(app)
