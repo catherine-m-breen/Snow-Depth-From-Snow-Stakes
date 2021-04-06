@@ -15,6 +15,7 @@ classdef app_april5_2020 < matlab.apps.AppBase
         Version11Label              matlab.ui.control.Label
         NotePleaseincludecsvattheendofyourfilenameLabel  matlab.ui.control.Label
         UIAxes                      matlab.ui.control.UIAxes
+        NotePressSpaceBarLabel      matlab.ui.control.Label
     end
 
     
@@ -429,6 +430,12 @@ classdef app_april5_2020 < matlab.apps.AppBase
             app.NotePleaseincludecsvattheendofyourfilenameLabel.Position = [20 219 245 24];
             app.NotePleaseincludecsvattheendofyourfilenameLabel.Text = 'Note: Please include .csv at end & press ENTER when done.';
 
+             % Create NotePressSpaceBar
+            app.NotePressSpaceBarLabel   = uilabel(app.UIFigure);
+            app.NotePressSpaceBarLabel.FontSize = 8;
+            app.NotePressSpaceBarLabel  .Position = [20 10 245 24];
+            app.NotePressSpaceBarLabel.Text = 'Note: Press the space bar between each image';
+            
             % Create UIAxes
             app.UIAxes = uiaxes(app.UIFigure);
             title(app.UIAxes, 'Snow Depth (cm)')
