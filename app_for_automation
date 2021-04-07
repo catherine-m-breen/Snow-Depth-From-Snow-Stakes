@@ -238,7 +238,7 @@ classdef app_april5_2020 < matlab.apps.AppBase
                 % Smooth the border using a morphological closing operation, imclose().
                 % The value 4 could be updated if you notice that it is not
                 % capturing the full width of the disk
-                structuringElement = strel('disk', 50); 
+                structuringElement = strel('disk', 4); %% it used to be 50 but that really overshadowed and didn't help
                 redObjectsMask = imclose(redObjectsMask, structuringElement);
                 subplot(1,4,3)
                 imshow(redObjectsMask, []);
