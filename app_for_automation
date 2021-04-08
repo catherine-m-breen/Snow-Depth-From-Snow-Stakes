@@ -1,4 +1,4 @@
-classdef app_april5_2020 < matlab.apps.AppBase
+classdef app_for_automation < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
