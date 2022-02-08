@@ -9,30 +9,37 @@ cameraNumber = 'W6A' ; %%% FILL IN HERE
 
 %%%%%% metadata
 %%% Go to the directory with the images
-%file_path = 'C:\Users\cbreen\Documents\SnowEx2020_Cameras\E8A';
+%% We will select the file path for the camera images by using 'uigetdir'. 'uigetdir' will automatically pop up your file explorer. Navigate to the appropriate folder of images when prompted 
 file_path = uigetdir;
 addpath(file_path)
 listing = dir([file_path,'/*.JPG']);
 
-%%% The poles should be 1.5 in by 10 feet; so 3.81 cm by 304.8 cm are their full dimensions.
-
-LengthPerPixel = 0.14;
+LengthPerPixel = 0.14; %% fill in here. This unique for each pole. 
 stake_length_cm = 304.8; %% cm/ make this the first image or the actual length %%
 
 %%%%%%%%%%
-
+%{
+Below we will create our variables to store our data. We will create three variabls
+1) PixelLengths -- store the number of pixels between the top and the bottom of the pole 
+2) Snow Depth -- this converts the pixels from PixelLengths into centimeters by using the LengthPerPixel (cm/pixel) as the conversion factor. The conversion 
+factor is unique to each pole. 
+}%
 PixelLengths   = zeros([1 size(listing,1)]);
 SnowDepth = zeros([1 size(listing,1)]); % in centimeters
-SnowDepth_distance = zeros([1 size(listing,1)]);
 
 %%%%%%%%%%
+
+%% We will know create a list that stores the top X and Y and bottom X and Y coordinates. 
+%{ Unique to SnowEx: we calibrated each image for lens distortion using the CameraVision toolbox in Matlab. If you are using a different type of camera (not Wingscape)
+the cameraParams variable will need to be updated. 
+}%
 topX = zeros([1 size(listing,1)]);
 topY = zeros([1 size(listing,1)]);
 bottomX = zeros([1 size(listing,1)]);
 bottomY = zeros([1 size(listing,1)]);
 distance = zeros([1 size(listing,1)]);
 
-for i=1: 4 % size(listing,1) % started when there was snow and no tree in canopy
+for i=1:size(listing,1) % started when there was snow and no tree in canopy
 
     img = imread(listing(i).name);
     
@@ -41,9 +48,6 @@ for i=1: 4 % size(listing,1) % started when there was snow and no tree in canopy
     radialDistortion = [0.4498 -1.9261];
     cameraParams = cameraParameters('IntrinsicMatrix',IntrinsicMatrix,'RadialDistortion',radialDistortion);
     img = undistortImage(img,cameraParams);
-    
-    %img = imrotate(img, -2); %%% rotation setting
-   
 
     %%%% get top and bottom of stake %%%%%
     imshow(img); % Displays the image
@@ -66,17 +70,19 @@ for i=1: 4 % size(listing,1) % started when there was snow and no tree in canopy
     b = rgb(:,:,3);
 
         %%%%%
-    PixelLengths(i) = length(b); %PixelLengths(i) = length(b);
+    
+   
+    PixelLengths(i) = length(b); 
+    %% LengthPerPixel is the average of the first four images
+    LengthPerPixel = ((stake_length_cm/PixelLengths(1))+(stake_length_cm/PixelLengths(2)+ (stake_length_cm/PixelLengths(3)+ (stake_length_cm/PixelLengths(4)))/4
     SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
     SnowPixels = length(b);
-    SnowDepth(i) = 304.8 - (SnowPixels * LengthPerPixel); %SnowDepth(i)
-    
-    %%%%%
-    % distance formula
-    distance(i) = sqrt((topX(i)-bottomX(i))^2+(topY(i)-bottomY(i))^2);
-    SnowDepth_distance(i) =  304.8 - (distance(i) * LengthPerPixel);
    
 end
+
+%% Now we will find the depth in centimeters by using our LengthPerPixel conversion
+SnowDepth(i) = stake_length_cm - (SnowPixels * LengthPerPixel);
+
 
 %%%%%%%%%%% extract date and time
  for z=1:size(listing,1)
@@ -97,7 +103,6 @@ title('Snow Depth (cm) from Snow Stakes');
 %%% take the minimum value of each day
 timeseries = timetable(creationDateTime(:),SnowDepth(:));
 timeseriesRaw = timetable(creationDateTime(:),PixelLengths(:));
-timeseriesDistance = timetable(creationDateTime(:),distance(:));
 
 %%% write two time tables 1) the snow depths
 %%% and 2) the pixel lengths (in case the calibration is wrong)
