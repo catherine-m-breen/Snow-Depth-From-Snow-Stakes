@@ -6,6 +6,7 @@ clear all; close all; clc
 
 % camera number
 cameraNumber = 'W6A' ; %%% FILL IN HERE
+stake_length_cm = 304.8; %% FILL IN HERE. We can adjust this so that it is the length of 10 cm, corresponding to the top of the pole. 
 
 %%%%%% metadata
 %%% Go to the directory with the images
@@ -14,32 +15,35 @@ file_path = uigetdir;
 addpath(file_path)
 listing = dir([file_path,'/*.JPG']);
 
-LengthPerPixel = 0.14; %% fill in here. This unique for each pole. 
-stake_length_cm = 304.8; %% cm/ make this the first image or the actual length %%
-
 %%%%%%%%%%
 %{
 Below we will create our variables to store our data. We will create three variabls
 1) PixelLengths -- store the number of pixels between the top and the bottom of the pole 
 2) Snow Depth -- this converts the pixels from PixelLengths into centimeters by using the LengthPerPixel (cm/pixel) as the conversion factor. The conversion 
 factor is unique to each pole. 
-}%
+%}
+
 PixelLengths   = zeros([1 size(listing,1)]);
 SnowDepth = zeros([1 size(listing,1)]); % in centimeters
 
 %%%%%%%%%%
 
 %% We will know create a list that stores the top X and Y and bottom X and Y coordinates. 
-%{ Unique to SnowEx: we calibrated each image for lens distortion using the CameraVision toolbox in Matlab. If you are using a different type of camera (not Wingscape)
+
+%{ 
+Unique to SnowEx: we calibrated each image for 
+lens distortion using the CameraVision toolbox in Matlab. 
+If you are using a different type of camera (not Wingscape) 
 the cameraParams variable will need to be updated. 
-}%
+%}
+
 topX = zeros([1 size(listing,1)]);
 topY = zeros([1 size(listing,1)]);
 bottomX = zeros([1 size(listing,1)]);
 bottomY = zeros([1 size(listing,1)]);
 distance = zeros([1 size(listing,1)]);
 
-for i=1:size(listing,1) % started when there was snow and no tree in canopy
+for i=1:4 %size(listing,1) % started when there was snow and no tree in canopy
 
     img = imread(listing(i).name);
     
@@ -74,7 +78,7 @@ for i=1:size(listing,1) % started when there was snow and no tree in canopy
    
     PixelLengths(i) = length(b); 
     %% LengthPerPixel is the average of the first four images
-    LengthPerPixel = ((stake_length_cm/PixelLengths(1))+(stake_length_cm/PixelLengths(2)+ (stake_length_cm/PixelLengths(3)+ (stake_length_cm/PixelLengths(4)))/4
+    LengthPerPixel = ((stake_length_cm/PixelLengths(1))+(stake_length_cm/PixelLengths(2))+ (stake_length_cm/PixelLengths(3))+ (stake_length_cm/PixelLengths(4)))/4;
     SnowFreePixels = PixelLengths(1); %Matlab indexes at 1?
     SnowPixels = length(b);
    
