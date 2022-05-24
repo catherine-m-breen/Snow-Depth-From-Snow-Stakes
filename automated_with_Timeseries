@@ -21,7 +21,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % clear workspace and begin code. 
 
-clear all; close all; clc
+%clear all; 
+close all; clc
 
 fontSize=12;
 
@@ -42,10 +43,7 @@ automatedCSV = '/SnowDepthTimeseries.csv';
 addpath(file_path)
 listing = dir([file_path,'/*.JPG']);
 
-filter = [.2 .3 0; .6 .7 1];
-
-pole_length = 150; % centimeters
-top_of_pole_length = 10;
+top_of_pole_length = 10; %%%% fill in here if different
               
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% 2) Calibrate to the top of the stake. Once it finds the line,
@@ -59,129 +57,27 @@ title('Crop the top of the stake');
 [X,Y]         = ginput(4); % crop the image by clicking around the yellow top of the pole
 
 topOfStake = (originalImage(min(Y):max(Y),min(X):max(X),:)); % Clip the Image based on `ginput.m`
-topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
+%topOfStake = imadjust(topOfStake, filter,[]); %%%%optional
 imshow(topOfStake);
-title('Select 6 pixels at top of stake'); % Place title here
-[x,y] = ginput (6);
-
-redTop   = zeros([1 5]); 
-greenTop   = zeros([1 5]); 
-blueTop = zeros([1 5]); 
-
- for i = 1:5
- redTop(i) = topOfStake(int16(y(i)), int16(x(i)), 1);
- greenTop(i) = topOfStake(int16(y(i)), int16(x(i)), 2);
- blueTop(i) = topOfStake(int16(y(i)), int16(x(i)), 3);
-end
-
-% Break RGB image into seperate RGB matrices
-redBandTop = topOfStake(:, :, 1);
-greenBandTop = topOfStake(:, :, 2);
-blueBandTop = topOfStake(:, :, 3);
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%% Now select thresholds for the 3 color bands. %%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-redThresholdLowTop = min(redTop);
-redThresholdHighTop = max(redTop);
-greenThresholdLowTop = min(greenTop);
-greenThresholdHighTop = max(greenTop);
-blueThresholdLowTop = min(blueTop);
-blueThresholdHighTop = max(blueTop);
-
-%%%%%%%%%%%%%%%%%%%% Create Masks Based on Thresholds Above  %%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-redMaskTop = (redBandTop >= redThresholdLowTop) & (redBandTop <= redThresholdHighTop);
-greenMaskTop = (greenBandTop >= greenThresholdLowTop) & (greenBandTop <= greenThresholdHighTop);
-blueMaskTop = (blueBandTop >= blueThresholdLowTop) & (blueBandTop <= blueThresholdHighTop);
-
-topOftheStakeMask = uint8(redMaskTop & greenMaskTop & blueMaskTop);
-
-%%%%%%%%%%%%%%%%%%%% Plot Binary Masks and Some Subsequent Cleaning %%%%%%%%%%%%%%%%%%%%
-figure
-set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
-subplot(1,4,1); %% this throws it off
-imshow(topOftheStakeMask, []);
-caption = sprintf('Mask of Only\nThe Yellow Objects');
-title(caption, 'FontSize', fontSize);
-
-% We're going to filter out small objects.
-smallestAcceptableArea = 100; % Keep areas only if they're bigger than this.
-topOftheStakeMask = uint8(bwareaopen(topOftheStakeMask, smallestAcceptableArea));
-subplot(1,4,2)
-imshow(topOftheStakeMask, []);
-fontSize = 13;
-caption = sprintf('bwareaopen() removed objects\nsmaller than %d pixels', smallestAcceptableArea);
-title(caption, 'FontSize', fontSize);
-
-% Smooth the border using a morphological closing operation, imclose().
-structuringElement = strel('disk', 4);
-topOftheStakeMask = imclose(topOftheStakeMask, structuringElement);
-subplot(1,4,3)
-imshow(topOftheStakeMask, []);
-fontSize = 16;
-title('Border smoothed', 'FontSize', fontSize);
-
-% Fill in any holes in the regions, since they are most likely red also.
-topOftheStakeMask = uint8(imfill(topOftheStakeMask, 'holes'));
-subplot(1,4,4)
-imshow(topOftheStakeMask, []);
-title('Regions Filled', 'FontSize', fontSize);
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%% Detect the Top and Bottom %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%% of the Pole if the Mask Was Creaed Nicely   %%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Hough Lines Code is the Algorithm that Detects the Longest Line
-[H,T,R] = hough(topOftheStakeMask,'Theta',-20:0.5:20);                 % hough function is designed to detect lines
-P  = houghpeaks(H,5,'threshold',ceil(0.5*max(H(:))));               % the 5 leads to 5 different lines from the Hough Matrix
-lines = houghlines(topOftheStakeMask,T,R,P,'FillGap',2,'MinLength',7); % Extract line segments based on Hough transform.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%% Plot Lines From Hough Transform %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-figure
-set(gcf,'Position',[23         531        1658         302]) % katie update %what do these numbers mean??
-subplot(1,2,1)
-imshow(topOfStake), hold on
-title(sprintf('%s\n%s','All Lines','Detected From Hough Transform')) %UPDATE
-
-max_len = 0; % initialize
-
-% Visualize X number of lines from the houghline output
-for k = 1:length(lines)
-    xy = [lines(k).point1; lines(k).point2];
-    plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
-    %
-    %                    % Plot beginnings and ends of lines
-    plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
-    plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+title('Select the top of  yellow band of the stake'); % Place title here
+  %%%% get top and bottom of stake %%%%%
+top = ginput(1); % Opens crosshairs to select the top...
+title('bottom');
+bottom = ginput(1); % ...and the bottom
+x = [top(1),bottom(1)];
+y = [top(2),bottom(2)];
     
-    % Determine the endpoints, and length in pixels of the longest line segment
-    len = norm(lines(k).point1 - lines(k).point2);
-    if ( len > max_len)
-        max_len = len; % length in pixels
-        xy_long = xy;  % coordinates
-        % xy_long
-        %     Row 1: End Point Coordinate:       X Coordinate in Column 1, Y Coordinate in Column 2
-        %     Row 2: Other End Point Coordinate: X Coordinate in Column 1, Y Coordinate in Column 2
-        
-    end
-end
+  % distance = top(1,)
+    %%% rgb values along the top and bottom of the stake %% rgb_line
+    % x and y must be vector pairs
+rgb = improfile(topOfStake,x,y); %does not have to be straight up and down!
+r = rgb(:,:,1);
+g = rgb(:,:,2);
+b = rgb(:,:,3);
 
-% Plot the longest line segment to see how well the algorithm worked for each image
-subplot(1,2,2),imshow(topOfStake)
-title(sprintf('%s\n%s','Longest Line','Detected From Hough Transform'))
-hold on
-plot(xy_long(:,1),xy_long(:,2),'LineWidth',2,'Color','blue');
-plot(xy_long(1,1),xy_long(1,2),'ro');
-plot(xy_long(2,1),xy_long(2,2),'bo');
-
-% number of pixels that make up the top
-PixelCount = max_len;
+        %%%%% number of pixels that make up the top
+PixelCount = length(b); %PixelLengths(i) = length(b);
 LengthPerPixel = top_of_pole_length/PixelCount; %cm/pixel
-
-pause();
 
 close all; clc 
 
@@ -205,7 +101,7 @@ greenThreshold   = zeros([1 (pixels*numThresholdImages)]);
 blueThreshold = zeros([1 (pixels*numThresholdImages)]); 
 count = 0;
 for g = 1:length(thresholdImages)
-thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
+%thresholdImages{g} = imadjust(thresholdImages{g}, filter,[]);  %%%%%%%% optional
 imshow(thresholdImages{g}); % show image
 title('Crop the entire stake to select threshold values');
 [U,V]         = ginput(4); % crop the image by clicking around the yellow top of the pole
@@ -256,7 +152,7 @@ for i=1:size(listing,1) % started when there was snow and no tree in canopy
     count=count+1;
 	%%%%%%%%%%%%%%%%%%%% Read in image into an array. %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     [rgbImage] = imread(listing(i).name);
-    rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
+    %rgbImage = imadjust(rgbImage, filter, []); %%%%%optional
     % imshow(listing(1).name) %testing
     % impixelinfo() %testing
     imshow(rgbImage)
@@ -472,6 +368,3 @@ writetimetable(timeseries,strcat(save_path, automatedCSV));
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%% end of code %%%%%%%%%%%%%%%%%%%%%
-
-
- 
